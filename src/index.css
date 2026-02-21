@@ -57,7 +57,7 @@ body {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: #dc2626;
+  background-color: #d1d5db;
   transition: 0.3s;
   border-radius: 24px;
 }
@@ -83,4 +83,14 @@ input:checked + .toggle-slider:before {
 .nav-active {
   color: #2563eb;
   border-bottom: 2px solid #2563eb;
+}
+
+/* Fix image pixelation when scaling down large images */
+.smooth-image {
+  image-rendering: high-quality;
+  image-rendering: -webkit-optimize-contrast;
+  -ms-interpolation-mode: bicubic;
+  -webkit-transform: translateZ(0);
+  transform: translateZ(0);
+  backface-visibility: hidden;
 }

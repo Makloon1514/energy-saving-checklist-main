@@ -1,6 +1,6 @@
-import { supabase } from '../lib/supabaseClient';
+import { supabase } from "../lib/supabaseClient";
 
-const CACHE_KEY = 'energy_checklist_cache';
+const CACHE_KEY = "energy_checklist_cache";
 const CACHE_TTL = 2 * 60 * 1000; // 2 minutes
 
 // ===== CACHE HELPERS =====
@@ -56,50 +56,58 @@ export async function getMasterData() {
       { data: buildings },
       { data: rooms },
       { data: inspectors },
-      { data: schedules }
+      { data: schedules },
     ] = await Promise.all([
-      supabase.from('buildings').select('*').order('id'),
-      supabase.from('rooms').select('*').order('id'),
-      supabase.from('inspectors').select('*'),
-      supabase.from('schedules').select('*').order('day_index')
+      supabase.from("buildings").select("*").order("id"),
+      supabase.from("rooms").select("*").order("id"),
+      supabase.from("inspectors").select("*"),
+      supabase.from("schedules").select("*").order("day_index"),
     ]);
 
     // Format Data
-    const formattedBuildings = (buildings || []).map(b => ({
+    const formattedBuildings = (buildings || []).map((b) => ({
       ...b,
-      rooms: (rooms || []).filter(r => r.building_id === b.id)
+      rooms: (rooms || []).filter((r) => r.building_id === b.id),
     }));
 
     const formattedSchedules = [];
-    const days = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+    const days = [
+      "อาทิตย์",
+      "จันทร์",
+      "อังคาร",
+      "พุธ",
+      "พฤหัสบดี",
+      "ศุกร์",
+      "เสาร์",
+    ];
 
     // Group schedules by day_index
     for (let i = 1; i <= 5; i++) {
-      const daySchedules = (schedules || []).filter(s => s.day_index === i);
+      const daySchedules = (schedules || []).filter((s) => s.day_index === i);
       formattedSchedules.push({
         day: days[i],
         dayIndex: i,
-        inspectors: daySchedules.map(s => {
-          const b = buildings?.find(bld => bld.id === s.building_id);
+        inspectors: daySchedules.map((s) => {
+          const b = buildings?.find((bld) => bld.id === s.building_id);
           return {
             name: s.inspector_name,
             buildingId: s.building_id,
-            buildingName: b ? b.name : ''
+            buildingName: b ? b.name : "",
           };
-        })
+        }),
       });
     }
 
     const result = {
       buildings: formattedBuildings,
       inspectors: inspectors || [],
-      schedules: formattedSchedules
+      schedules: formattedSchedules,
     };
 
     setCachedData(cacheKey, result);
     return result;
   } catch (error) {
-    console.error('getMasterData error:', error);
+    console.error("getMasterData error:", error);
     return null;
   }
 }
@@ -108,27 +116,60 @@ export async function getMasterData() {
 
 export async function addInspector(inspector) {
   clearCache();
-  return supabase.from('inspectors').insert(inspector);
+  return supabase.from("inspectors").insert(inspector);
 }
 
 export async function deleteInspector(name) {
   clearCache();
-  return supabase.from('inspectors').delete().eq('name', name);
+  return supabase.from("inspectors").delete().eq("name", name);
 }
 
 export async function updateInspector(oldName, inspector) {
   clearCache();
-  return supabase.from('inspectors').update(inspector).eq('name', oldName);
+  return supabase.from("inspectors").update(inspector).eq("name", oldName);
 }
 
 export async function addSchedule(schedule) {
   clearCache();
-  return supabase.from('schedules').insert(schedule);
+  return supabase.from("schedules").insert(schedule);
 }
 
 export async function deleteSchedule(dayIndex, inspectorName) {
   clearCache();
-  return supabase.from('schedules').delete().match({ day_index: dayIndex, inspector_name: inspectorName });
+  return supabase
+    .from("schedules")
+    .delete()
+    .match({ day_index: dayIndex, inspector_name: inspectorName });
+}
+
+export async function addBuilding(building) {
+  clearCache();
+  return supabase.from("buildings").insert(building);
+}
+
+export async function updateBuilding(id, building) {
+  clearCache();
+  return supabase.from("buildings").update(building).eq("id", id);
+}
+
+export async function deleteBuilding(id) {
+  clearCache();
+  return supabase.from("buildings").delete().eq("id", id);
+}
+
+export async function addRoom(room) {
+  clearCache();
+  return supabase.from("rooms").insert(room);
+}
+
+export async function updateRoom(id, room) {
+  clearCache();
+  return supabase.from("rooms").update(room).eq("id", id);
+}
+
+export async function deleteRoom(id) {
+  clearCache();
+  return supabase.from("rooms").delete().eq("id", id);
 }
 
 // ===== GET ALL DATA (combined view) =====
@@ -144,9 +185,9 @@ export async function getAllData(date) {
   try {
     // 1. Fetch all records from Supabase
     const { data: dbRecords, error } = await supabase
-      .from('records')
-      .select('*')
-      .order('created_at', { ascending: true });
+      .from("records")
+      .select("*")
+      .order("created_at", { ascending: true });
 
     if (error) throw error;
 
@@ -189,7 +230,7 @@ export async function getAllData(date) {
           computer: row.computer,
           aircon: row.aircon,
           fan: row.fan,
-          allPassed: row.status === 'ผ่านครบ',
+          allPassed: row.status === "ผ่านครบ",
           score: row.score,
         };
       }
@@ -207,10 +248,12 @@ export async function getAllData(date) {
       }
       scoreMap[skey].totalScore += row.score;
       scoreMap[skey].totalChecks += 1;
-      if (row.status === 'ผ่านครบ') scoreMap[skey].totalPassed += 1;
+      if (row.status === "ผ่านครบ") scoreMap[skey].totalPassed += 1;
     }
 
-    const scores = Object.values(scoreMap).sort((a, b) => b.totalScore - a.totalScore);
+    const scores = Object.values(scoreMap).sort(
+      (a, b) => b.totalScore - a.totalScore,
+    );
 
     const result = {
       success: true,
@@ -222,7 +265,7 @@ export async function getAllData(date) {
     setCachedData(cacheKey, result);
     return result;
   } catch (error) {
-    console.error('getAllData error:', error);
+    console.error("getAllData error:", error);
     return { success: true, status: {}, records: [], scores: [] };
   }
 }
@@ -230,7 +273,7 @@ export async function getAllData(date) {
 // ===== SUBMIT CHECKLIST =====
 export async function submitChecklist(data) {
   if (!isConfigured()) {
-    throw new Error('Supabase Configuration is missing in .env');
+    throw new Error("Supabase Configuration is missing in .env");
   }
 
   try {
@@ -238,13 +281,17 @@ export async function submitChecklist(data) {
 
     const roomData = data.items[0];
 
-    // Calculate score and status manually (formerly done by GAS backend)
+    // Calculate score, energy, and co2 manually
     let score = 0;
-    if (roomData.lights) score++;
-    if (roomData.computer) score++;
-    if (roomData.aircon) score++;
-    if (roomData.fan) score++;
-    const status = score === 4 ? 'ผ่านครบ' : 'เปิดทิ้งไว้';
+    let energy_saved = 0;
+    let co2_saved = 0;
+
+    if (roomData.lights) { score++; energy_saved += 0.1; co2_saved += 0.05; }
+    if (roomData.computer) { score++; energy_saved += 0.2; co2_saved += 0.1; }
+    if (roomData.aircon) { score++; energy_saved += 1.5; co2_saved += 0.8; }
+    if (roomData.fan) { score++; energy_saved += 0.1; co2_saved += 0.05; }
+    
+    const status = score === 4 ? "ผ่านครบ" : "เปิดทิ้งไว้";
 
     const newRecord = {
       date: data.date,
@@ -260,13 +307,15 @@ export async function submitChecklist(data) {
       fan: roomData.fan,
       score: score,
       status: status,
+      energy_saved: energy_saved,
+      co2_saved: co2_saved,
     };
 
     // Upsert or Insert. We use upsert on (date, building_id, room_id)
-    const { data: resultData, error } = await supabase
-      .from('records')
+    const { error } = await supabase
+      .from("records")
       .upsert(newRecord, {
-        onConflict: 'date,building_id,room_id'
+        onConflict: "date,building_id,room_id",
       })
       .select();
 
@@ -276,7 +325,7 @@ export async function submitChecklist(data) {
 
     return { success: true };
   } catch (error) {
-    console.error('Submit error:', error);
+    console.error("Submit error:", error);
     throw error;
   }
 }
@@ -287,7 +336,7 @@ export async function getRecords(date) {
   const allData = await getAllData(date);
   return {
     success: allData.success,
-    records: allData.records || []
+    records: allData.records || [],
   };
 }
 
@@ -297,4 +346,3 @@ export function isConfigured() {
   const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
   return url && url.length > 5 && key && key.length > 5;
 }
-

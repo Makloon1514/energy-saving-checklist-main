@@ -43,13 +43,31 @@ export default function Dashboard({ masterData }) {
   }, [viewDate]);
 
   // Stats
-  const totalRooms = BUILDINGS.reduce((sum, b) => sum + b.rooms.length, 0);
+  const totalRooms = BUILDINGS.reduce((sum, b) => {
+    const activeRoomsCount = b.rooms.filter(r => r.is_active !== false).length;
+    return sum + activeRoomsCount;
+  }, 0);
   const checkedEntries = Object.values(todayStatusData);
   const checkedRooms = checkedEntries.filter((s) => s.allPassed).length;
   const partialRooms = checkedEntries.filter((s) => !s.allPassed).length;
   const uncheckedRooms = totalRooms - checkedRooms - partialRooms;
   const checkedCount = checkedRooms + partialRooms;
   const completionPercent = totalRooms > 0 ? Math.round((checkedCount / totalRooms) * 100) : 0;
+
+  // Calculate CO2 and Energy Savings for all checked items
+  const savings = checkedEntries.reduce((acc, s) => {
+    let energy = 0;
+    let co2 = 0;
+    if (s.lights === true) { energy += 0.1; co2 += 0.05; }
+    if (s.computer === true) { energy += 0.2; co2 += 0.1; }
+    if (s.aircon === true) { energy += 1.5; co2 += 0.8; }
+    if (s.fan === true) { energy += 0.1; co2 += 0.05; }
+    return { energy: acc.energy + energy, co2: acc.co2 + co2 };
+  }, { energy: 0, co2: 0 });
+
+  const co2Saved = savings.co2.toFixed(1);
+  const energySaved = savings.energy.toFixed(1);
+  const todayTotalScore = checkedEntries.reduce((sum, s) => sum + (s.score || 0), 0);
 
   // Filtered records for sheet view
   const filteredRecords = useMemo(() => {
@@ -61,11 +79,6 @@ export default function Dashboard({ masterData }) {
       return a.building.localeCompare(b.building);
     });
   }, [allRecords, filterDate, filterBuilding]);
-
-  const uniqueDates = useMemo(() => {
-    const dates = [...new Set(allRecords.map((r) => r.date))];
-    return dates.sort().reverse();
-  }, [allRecords]);
 
   // Total scores
   const totalScore = scoresData.reduce((sum, s) => sum + (Number(s.totalScore) || 0), 0);
@@ -79,29 +92,41 @@ export default function Dashboard({ masterData }) {
 
   const handleExportCSV = () => {
     if (filteredRecords.length === 0) return alert('ไม่มีข้อมูลให้ Export');
-    const headers = ['วันที่', 'ผู้ตรวจ', 'อาคาร', 'ห้อง', ...CHECKLIST_ITEMS.map(i => i.label), 'สถานะ', 'คะแนน', 'เวลาบันทึก'];
-    const rows = filteredRecords.map(r => [
-      r.date, // YYYY-MM-DD
-      r.inspector,
-      r.building,
-      r.room,
-      ...CHECKLIST_ITEMS.map(i => r[i.id] ? 'ผ่าน' : 'ไม่ผ่าน'),
-      r.status,
-      r.score,
-      new Date(r.timestamp).toLocaleString('th-TH')
-    ]);
+    const headers = ['วันที่', 'ผู้ตรวจ', 'อาคาร', 'ห้อง', ...CHECKLIST_ITEMS.map(i => i.label), 'สถานะ', 'คะแนน', 'ประหยัดไฟ (kWh)', 'ลด CO2 (kg)', 'เวลาบันทึก'];
+    const rows = filteredRecords.map(r => {
+      let energy = 0;
+      let co2 = 0;
+      if (r.lights === true) { energy += 0.1; co2 += 0.05; }
+      if (r.computer === true) { energy += 0.2; co2 += 0.1; }
+      if (r.aircon === true) { energy += 1.5; co2 += 0.8; }
+      if (r.fan === true) { energy += 0.1; co2 += 0.05; }
 
-    // Add BOM for Excel UTF-8
-    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" +
-      [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+      return [
+        r.date, // YYYY-MM-DD
+        r.inspector,
+        r.building,
+        r.room,
+        ...CHECKLIST_ITEMS.map(i => r[i.id] ? 'ผ่าน' : 'ไม่ผ่าน'),
+        r.status,
+        r.score,
+        energy.toFixed(1),
+        co2.toFixed(2),
+        new Date(r.timestamp).toLocaleString('th-TH')
+      ];
+    });
 
-    const encodedUri = encodeURI(csvContent);
+    // Add BOM for Excel UTF-8 and create Blob
+    const csvContent = "\uFEFF" + [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    
     const link = document.createElement('a');
-    link.setAttribute('href', encodedUri);
+    link.href = url;
     link.setAttribute('download', `energy_saving_report_${filterDate || 'all'}.csv`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -144,9 +169,12 @@ export default function Dashboard({ masterData }) {
       </div>
 
       {loading ? (
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-12 text-center">
-          <div className="text-3xl mb-3 animate-bounce">⏳</div>
-          <p className="text-sm text-gray-400">กำลังโหลดข้อมูล...</p>
+        <div className="space-y-4">
+          <div className="grid grid-cols-3 gap-3">
+            {[1, 2, 3].map(i => <div key={i} className="bg-gray-200 animate-pulse h-24 rounded-2xl"></div>)}
+          </div>
+          <div className="bg-gray-200 animate-pulse h-32 rounded-2xl w-full"></div>
+          <div className="bg-gray-200 animate-pulse h-64 rounded-2xl w-full"></div>
         </div>
       ) : (
         <>
@@ -169,83 +197,128 @@ export default function Dashboard({ masterData }) {
                 </div>
               </div>
 
-              {/* Progress Bar */}
-              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-4 mb-4">
-                <div className="flex items-center justify-between mb-2">
-                  <span className="text-sm font-semibold text-gray-700">ความสำเร็จวันนี้</span>
-                  <span className="text-sm font-bold text-blue-600">{completionPercent}%</span>
+              {/* Progress Bar + CO2 Saved */}
+              <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 mb-4 relative overflow-hidden">
+                <div className="flex items-center justify-between mb-2 relative z-10">
+                  <div className="flex items-center gap-2 text-sm font-semibold text-gray-800">
+                    <span className="text-lg">🌿</span> ความสำเร็จวันนี้
+                  </div>
+                  <span className="text-sm font-bold text-orange-500">{completionPercent}%</span>
                 </div>
-                <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden">
+                <div className="w-full bg-gray-100 rounded-full h-3 overflow-hidden mb-4 relative z-10">
                   <div
                     className="h-full rounded-full transition-all duration-500 ease-out"
                     style={{
                       width: `${completionPercent}%`,
-                      background:
-                        completionPercent === 100
-                          ? 'linear-gradient(90deg, #16a34a, #22c55e)'
-                          : 'linear-gradient(90deg, #2563eb, #3b82f6)',
+                      background: 'linear-gradient(90deg, #34d399, #10b981)',
                     }}
                   />
                 </div>
+                
+                {/* Eco Savings Sub Box */}
+                <div className="bg-green-50 rounded-xl p-3 flex items-center justify-between border border-green-100 relative z-10">
+                    <div className="flex items-center gap-3">
+                        <span className="text-2xl">🌱</span>
+                        <div>
+                            <div className="text-xs text-green-700 font-bold mb-0.5">CO₂ ที่ลดได้วันนี้ <span className="font-normal">(ช่วงพักเที่ยง)</span></div>
+                            <div className="text-sm font-bold text-green-900">{co2Saved} <span className="text-xs font-normal">kg CO₂eq</span></div>
+                        </div>
+                    </div>
+                </div>
+              </div>
+
+              {/* Advanced Eco Dashboard (Dark Green Box) */}
+              <div className="bg-linear-to-br from-green-700 to-emerald-900 rounded-2xl p-5 mb-4 shadow-lg text-white grid grid-cols-3 gap-2 text-center border border-green-800">
+                  <div className="bg-black/10 rounded-xl p-3 border border-white/10 flex flex-col items-center justify-center">
+                      <div className="text-xs text-green-200 mb-1">CO₂ ลดได้วันนี้</div>
+                      <div className="text-xl font-bold flex items-baseline gap-1">
+                          {co2Saved} <span className="text-xs font-normal opacity-80">kg</span>
+                      </div>
+                  </div>
+                  <div className="bg-black/10 rounded-xl p-3 border border-white/10 flex flex-col items-center justify-center">
+                      <div className="text-xs text-green-200 mb-1">ประหยัดไฟ</div>
+                      <div className="text-xl font-bold flex items-baseline gap-1">
+                          {energySaved} <span className="text-xs font-normal opacity-80">kWh</span>
+                      </div>
+                  </div>
+                  <div className="bg-black/10 rounded-xl p-3 border border-white/10 flex flex-col items-center justify-center">
+                      <div className="text-xs text-green-200 mb-1">คะแนนรวม</div>
+                      <div className="text-xl font-bold flex items-baseline gap-1">
+                          {todayTotalScore} <span className="text-xs font-normal opacity-80">pt</span>
+                      </div>
+                  </div>
               </div>
 
               {/* Building Status */}
-              {BUILDINGS.map((building) => (
-                <div
-                  key={building.id}
-                  className="bg-white rounded-2xl shadow-sm border border-gray-200 mb-3 overflow-hidden"
-                >
-                  <div className="bg-gray-50 px-4 py-3 border-b border-gray-100">
-                    <h3 className="font-semibold text-sm text-gray-800">🏢 {building.name}</h3>
-                  </div>
-                  <div className="divide-y divide-gray-50">
-                    {building.rooms.map((room) => {
-                      const key = `${building.name}|${room.name}`;
-                      const record = todayStatusData[key];
-                      const status = record ? (record.allPassed ? 'pass' : 'partial') : 'none';
+              {BUILDINGS.map((building) => {
+                // Filter active rooms or rooms that have records today
+                const visibleRooms = building.rooms.filter(room => {
+                  const key = `${building.name}|${room.name}`;
+                  const hasRecordToday = !!todayStatusData[key];
+                  return room.is_active !== false || hasRecordToday;
+                });
 
-                      return (
-                        <div key={room.id} className="px-4 py-3 flex items-center justify-between">
-                          <div className="flex items-center gap-3">
-                            <span
-                              className={`w-2.5 h-2.5 rounded-full ${status === 'pass'
-                                ? 'bg-green-500'
-                                : status === 'partial'
-                                  ? 'bg-yellow-400'
-                                  : 'bg-gray-200'
-                                }`}
-                            />
-                            <span className="text-sm text-gray-700">{room.name}</span>
-                          </div>
-                          <div className="flex items-center gap-1.5">
-                            {record ? (
-                              <>
-                                {CHECKLIST_ITEMS.map((item) => (
-                                  <span
-                                    key={item.id}
-                                    title={item.label}
-                                    className={`text-[10px] w-5 h-5 rounded-full flex items-center justify-center ${record[item.id]
-                                      ? 'bg-green-100 text-green-600'
-                                      : 'bg-red-100 text-red-500'
-                                      }`}
-                                  >
-                                    {item.icon}
+                if (visibleRooms.length === 0) return null;
+
+                return (
+                  <div
+                    key={building.id}
+                    className="bg-white rounded-2xl shadow-sm border border-gray-200 mb-3 overflow-hidden"
+                  >
+                    <div className="bg-gray-50 px-4 py-3 border-b border-gray-100">
+                      <h3 className="font-semibold text-sm text-gray-800">🏢 {building.name}</h3>
+                    </div>
+                    <div className="divide-y divide-gray-50">
+                      {visibleRooms.map((room) => {
+                        const key = `${building.name}|${room.name}`;
+                        const record = todayStatusData[key];
+                        const status = record ? (record.allPassed ? 'pass' : 'partial') : 'none';
+
+                        return (
+                          <div key={room.id} className="px-4 py-3 flex items-center justify-between">
+                            <div className="flex items-center gap-3">
+                              <span
+                                className={`w-2.5 h-2.5 rounded-full ${status === 'pass'
+                                  ? 'bg-green-500'
+                                  : status === 'partial'
+                                    ? 'bg-yellow-400'
+                                    : 'bg-gray-200'
+                                  }`}
+                              />
+                              <span className="text-sm text-gray-700">
+                                {room.name} {room.is_active === false && <span className="text-[10px] text-red-500 ml-1">(ปิด)</span>}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {record ? (
+                                <>
+                                  {CHECKLIST_ITEMS.map((item) => (
+                                    <span
+                                      key={item.id}
+                                      title={item.label}
+                                      className={`text-[10px] w-5 h-5 rounded-full flex items-center justify-center ${record[item.id]
+                                        ? 'bg-green-100 text-green-600'
+                                        : 'bg-red-100 text-red-500'
+                                        }`}
+                                    >
+                                      {item.icon}
+                                    </span>
+                                  ))}
+                                  <span className="text-[10px] ml-1 text-gray-400">
+                                    {record.inspector}
                                   </span>
-                                ))}
-                                <span className="text-[10px] ml-1 text-gray-400">
-                                  {record.inspector}
-                                </span>
-                              </>
-                            ) : (
-                              <span className="text-xs text-gray-300">ยังไม่ตรวจ</span>
-                            )}
+                                </>
+                              ) : (
+                                <span className="text-xs text-gray-300">ยังไม่ตรวจ</span>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      );
-                    })}
+                        );
+                      })}
+                    </div>
                   </div>
-                </div>
-              ))}
+                );
+              })}
             </>
           )}
 
@@ -253,7 +326,7 @@ export default function Dashboard({ masterData }) {
           {activeSection === 'schedule' && (
             <>
               {/* Campaign Info */}
-              <div className="bg-gradient-to-br from-blue-50 to-indigo-50 rounded-2xl border border-blue-100 p-5 mb-4">
+              <div className="bg-linear-to-br from-blue-50 to-indigo-50 rounded-2xl border border-blue-100 p-5 mb-4">
                 <h2 className="text-base font-bold text-blue-800 mb-3">🏆 แคมเปญประหยัดพลังงาน</h2>
                 <div className="space-y-2.5 text-sm">
                   <div className="flex items-start gap-2">
@@ -340,7 +413,7 @@ export default function Dashboard({ masterData }) {
           {activeSection === 'scores' && (
             <>
               {/* Total Score */}
-              <div className="bg-gradient-to-br from-yellow-50 to-amber-50 rounded-2xl border border-yellow-200 p-5 mb-4 text-center">
+              <div className="bg-linear-to-br from-yellow-50 to-amber-50 rounded-2xl border border-yellow-200 p-5 mb-4 text-center">
                 <div className="text-4xl mb-2">🏆</div>
                 <div className="text-3xl font-bold text-yellow-700">{totalScore}</div>
                 <div className="text-xs text-yellow-600 mt-1">คะแนนรวมทั้งหมด</div>
@@ -464,13 +537,19 @@ export default function Dashboard({ masterData }) {
                         <th className="text-center px-3 py-3 text-gray-600 font-semibold text-xs whitespace-nowrap">
                           คะแนน
                         </th>
+                        <th className="text-center px-3 py-3 text-gray-600 font-semibold text-xs whitespace-nowrap">
+                          ลด CO₂
+                        </th>
+                        <th className="text-center px-3 py-3 text-gray-600 font-semibold text-xs whitespace-nowrap">
+                          ประหยัดไฟ
+                        </th>
                       </tr>
                     </thead>
                     <tbody>
                       {filteredRecords.length === 0 ? (
                         <tr>
                           <td
-                            colSpan={4 + CHECKLIST_ITEMS.length + 2}
+                            colSpan={4 + CHECKLIST_ITEMS.length + 4}
                             className="text-center py-12 text-gray-400"
                           >
                             <div className="text-3xl mb-2">📭</div>
@@ -519,6 +598,25 @@ export default function Dashboard({ masterData }) {
                             <td className="text-center px-3 py-2.5 font-bold text-yellow-600 text-xs">
                               {r.score}
                             </td>
+                            {(() => {
+                              let rowEnergy = 0;
+                              let rowCO2 = 0;
+                              if (r.lights === true) { rowEnergy += 0.1; rowCO2 += 0.05; }
+                              if (r.computer === true) { rowEnergy += 0.2; rowCO2 += 0.1; }
+                              if (r.aircon === true) { rowEnergy += 1.5; rowCO2 += 0.8; }
+                              if (r.fan === true) { rowEnergy += 0.1; rowCO2 += 0.05; }
+
+                              return (
+                                <>
+                                  <td className="text-center px-3 py-2.5 text-green-600 font-medium text-xs">
+                                    {rowCO2 > 0 ? `${rowCO2.toFixed(2)} kg` : '-'}
+                                  </td>
+                                  <td className="text-center px-3 py-2.5 text-green-600 font-medium text-xs">
+                                    {rowEnergy > 0 ? `${rowEnergy.toFixed(1)} kWh` : '-'}
+                                  </td>
+                                </>
+                              );
+                            })()}
                           </tr>
                         ))
                       )}

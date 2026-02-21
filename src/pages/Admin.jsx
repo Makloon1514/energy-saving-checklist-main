@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { addInspector, deleteInspector, updateInspector, addSchedule, deleteSchedule } from '../data/api';
+import { addInspector, deleteInspector, updateInspector, addSchedule, deleteSchedule, addBuilding, updateBuilding, deleteBuilding, addRoom, updateRoom, deleteRoom } from '../data/api';
+import Avatar from '../components/Avatar';
 
 export default function Admin({ masterData, onRefresh }) {
     const [isLoggedIn, setIsLoggedIn] = useState(false);
@@ -20,6 +21,16 @@ export default function Admin({ masterData, onRefresh }) {
     const [newScheduleInspector, setNewScheduleInspector] = useState('');
     const [newScheduleBuilding, setNewScheduleBuilding] = useState('');
 
+    const [newBuildingName, setNewBuildingName] = useState('');
+    const [editingBuilding, setEditingBuilding] = useState(null);
+    const [editBuildingName, setEditBuildingName] = useState('');
+
+    const [newRoomName, setNewRoomName] = useState('');
+    const [newRoomBuilding, setNewRoomBuilding] = useState('');
+    const [editingRoom, setEditingRoom] = useState(null);
+    const [editRoomName, setEditRoomName] = useState('');
+    const [editRoomBuilding, setEditRoomBuilding] = useState('');
+
     const handleLogin = (e) => {
         e.preventDefault();
         if (password === 'admin1234') {
@@ -31,9 +42,9 @@ export default function Admin({ masterData, onRefresh }) {
 
     if (!isLoggedIn) {
         return (
-            <div className="max-w-md mx-auto mt-20 p-8 bg-white rounded-[2rem] shadow-sm border border-gray-100 text-center">
+            <div className="max-w-md mx-auto mt-20 p-8 bg-white rounded-4xl shadow-sm border border-gray-100 text-center">
                 <div className="text-4xl mb-4">🔐</div>
-                <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-pink-500 mb-6">เข้าสู่ระบบ Admin</h2>
+                <h2 className="text-2xl font-bold bg-clip-text text-transparent bg-linear-to-r from-purple-600 to-pink-500 mb-6">เข้าสู่ระบบ Admin</h2>
                 <form onSubmit={handleLogin} className="space-y-4">
                     <input
                         type="password"
@@ -101,33 +112,104 @@ export default function Admin({ masterData, onRefresh }) {
         }
     };
 
+    const handleAddBuilding = async () => {
+        if (!newBuildingName) return alert('กรอกชื่ออาคารด้วยครับ');
+        await addBuilding({ name: newBuildingName });
+        setNewBuildingName('');
+        onRefresh();
+    };
+
+    const handleDeleteBuilding = async (id, name) => {
+        if (window.confirm(`ลบอาคาร ${name} แน่หรือไม่? ห้องในอาคารนี้จะถูกลบไปด้วย!`)) {
+            await deleteBuilding(id);
+            onRefresh();
+        }
+    };
+
+    const openEditBuilding = (b) => {
+        setEditingBuilding(b.id);
+        setEditBuildingName(b.name);
+    };
+
+    const handleUpdateBuilding = async () => {
+        if (!editBuildingName) return alert('กรอกชื่ออาคารด้วยครับ');
+        await updateBuilding(editingBuilding, { name: editBuildingName });
+        setEditingBuilding(null);
+        onRefresh();
+    };
+
+    const handleAddRoom = async () => {
+        if (!newRoomName || !newRoomBuilding) return alert('กรอกชื่อห้องและเลือกอาคารด้วยครับ');
+        await addRoom({ name: newRoomName, building_id: newRoomBuilding });
+        setNewRoomName('');
+        onRefresh();
+    };
+
+    const handleDeleteRoom = async (id, name) => {
+        if (window.confirm(`ลบห้อง ${name} แน่หรือไม่?`)) {
+            await deleteRoom(id);
+            onRefresh();
+        }
+    };
+
+    const openEditRoom = (r) => {
+        setEditingRoom(r.id);
+        setEditRoomName(r.name);
+        setEditRoomBuilding(r.building_id);
+    };
+
+    const handleUpdateRoom = async () => {
+        if (!editRoomName || !editRoomBuilding) return alert('กรอกชื่อห้องและเลือกอาคารด้วยครับ');
+        await updateRoom(editingRoom, { name: editRoomName, building_id: editRoomBuilding });
+        setEditingRoom(null);
+        onRefresh();
+    };
+
+    const handleToggleRoomStatus = async (room) => {
+        const newStatus = room.is_active === false ? true : false;
+        await updateRoom(room.id, { is_active: newStatus });
+        onRefresh();
+    };
+
     return (
         <div className="max-w-lg mx-auto pb-8 relative">
-            <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 p-8 mb-6 text-center">
-                <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-gradient-to-r from-purple-600 to-pink-500 mb-2">
+            <div className="bg-white rounded-4xl shadow-sm border border-gray-100 p-8 mb-6 text-center">
+                <h1 className="text-2xl font-bold bg-clip-text text-transparent bg-linear-to-r from-purple-600 to-pink-500 mb-2">
                     ⚙️ ระบบจัดการข้อมูลหลังบ้าน
                 </h1>
                 <p className="text-sm text-gray-500">จัดการรายชื่อผู้ตรวจและตารางเวร</p>
             </div>
 
             {/* Tabs */}
-            <div className="flex gap-2 mb-4 bg-white p-2 rounded-2xl border border-gray-100 shadow-sm">
+            <div className="flex flex-wrap gap-2 mb-4 bg-white p-2 rounded-2xl border border-gray-100 shadow-sm">
                 <button
                     onClick={() => setActiveTab('inspectors')}
-                    className={`flex-1 py-2 rounded-xl text-sm font-bold transition-colors ${activeTab === 'inspectors' ? 'bg-purple-100 text-purple-700' : 'text-gray-500 hover:bg-gray-50'}`}
+                    className={`flex-1 py-2 px-2 rounded-xl text-xs sm:text-sm font-bold transition-colors ${activeTab === 'inspectors' ? 'bg-purple-100 text-purple-700' : 'text-gray-500 hover:bg-gray-50'}`}
                 >
                     👤 ผู้ตรวจ
                 </button>
                 <button
                     onClick={() => setActiveTab('schedules')}
-                    className={`flex-1 py-2 rounded-xl text-sm font-bold transition-colors ${activeTab === 'schedules' ? 'bg-pink-100 text-pink-700' : 'text-gray-500 hover:bg-gray-50'}`}
+                    className={`flex-1 py-2 px-2 rounded-xl text-xs sm:text-sm font-bold transition-colors ${activeTab === 'schedules' ? 'bg-pink-100 text-pink-700' : 'text-gray-500 hover:bg-gray-50'}`}
                 >
                     📅 ตารางเวร
+                </button>
+                <button
+                    onClick={() => setActiveTab('buildings')}
+                    className={`flex-1 py-2 px-2 rounded-xl text-xs sm:text-sm font-bold transition-colors ${activeTab === 'buildings' ? 'bg-blue-100 text-blue-700' : 'text-gray-500 hover:bg-gray-50'}`}
+                >
+                    🏢 อาคาร
+                </button>
+                <button
+                    onClick={() => setActiveTab('rooms')}
+                    className={`flex-1 py-2 px-2 rounded-xl text-xs sm:text-sm font-bold transition-colors ${activeTab === 'rooms' ? 'bg-green-100 text-green-700' : 'text-gray-500 hover:bg-gray-50'}`}
+                >
+                    🚪 ห้อง
                 </button>
             </div>
 
             {activeTab === 'inspectors' && (
-                <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 p-6 space-y-6">
+                <div className="bg-white rounded-4xl shadow-sm border border-gray-100 p-6 space-y-6">
                     <h2 className="text-lg font-bold text-gray-800">เพิ่มผู้ตรวจใหม่</h2>
                     <div className="space-y-3">
                         <input type="text" placeholder="ชื่อผู้ตรวจ" value={newInspectorName} onChange={e => setNewInspectorName(e.target.value)} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl" />
@@ -143,27 +225,34 @@ export default function Admin({ masterData, onRefresh }) {
                     <hr className="border-gray-100" />
                     <h2 className="text-lg font-bold text-gray-800">รายชื่อผู้ตรวจปัจจุบัน</h2>
                     <div className="space-y-3">
-                        {masterData.inspectors.map(ins => (
-                            <div key={ins.name} className="flex items-center justify-between bg-gray-50 p-3 rounded-xl border border-gray-100">
-                                <div className="flex items-center gap-3">
-                                    <img src={ins.image_url || '/pic/user.jpg'} className="w-10 h-10 rounded-full object-cover object-top border-2 border-white shadow-sm" />
-                                    <div>
-                                        <div className="font-bold text-sm text-gray-800">{ins.name}</div>
-                                        <div className="text-xs text-gray-500">{ins.default_building}</div>
+                        {masterData.inspectors.length === 0 ? (
+                            <div className="text-center py-8 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                                <span className="text-3xl mb-2 block">📭</span>
+                                <span className="text-sm text-gray-400">ยังไม่มีข้อมูลผู้ตรวจ</span>
+                            </div>
+                        ) : (
+                            masterData.inspectors.map(ins => (
+                                <div key={ins.name} className="flex items-center justify-between bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                    <div className="flex items-center gap-3">
+                                        <Avatar src={ins.image_url || '/pic/user.jpg'} alt={ins.name} className="w-10 h-10 rounded-full object-cover object-top border-2 border-white shadow-sm smooth-image" />
+                                        <div>
+                                            <div className="font-bold text-sm text-gray-800">{ins.name}</div>
+                                            <div className="text-xs text-gray-500">{ins.default_building}</div>
+                                        </div>
+                                    </div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => openEditInspector(ins)} className="text-blue-500 bg-blue-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-100">แก้ไข</button>
+                                        <button onClick={() => handleDeleteInspector(ins.name)} className="text-red-500 bg-red-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-100">ลบ</button>
                                     </div>
                                 </div>
-                                <div className="flex gap-2">
-                                    <button onClick={() => openEditInspector(ins)} className="text-blue-500 bg-blue-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-100">แก้ไข</button>
-                                    <button onClick={() => handleDeleteInspector(ins.name)} className="text-red-500 bg-red-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-100">ลบ</button>
-                                </div>
-                            </div>
-                        ))}
+                            ))
+                        )}
                     </div>
                 </div>
             )}
 
             {activeTab === 'schedules' && (
-                <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 p-6 space-y-6">
+                <div className="bg-white rounded-4xl shadow-sm border border-gray-100 p-6 space-y-6">
                     <h2 className="text-lg font-bold text-gray-800">จัดการตารางเวร</h2>
                     <div className="space-y-3">
                         <select value={newScheduleDay} onChange={e => setNewScheduleDay(e.target.value)} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl">
@@ -212,6 +301,90 @@ export default function Admin({ masterData, onRefresh }) {
                 </div>
             )}
 
+            {activeTab === 'buildings' && (
+                <div className="bg-white rounded-4xl shadow-sm border border-gray-100 p-6 space-y-6">
+                    <h2 className="text-lg font-bold text-gray-800">เพิ่มอาคารใหม่</h2>
+                    <div className="space-y-3">
+                        <input type="text" placeholder="ชื่ออาคาร" value={newBuildingName} onChange={e => setNewBuildingName(e.target.value)} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl" />
+                        <button onClick={handleAddBuilding} className="w-full bg-blue-600 text-white font-bold py-2.5 rounded-xl hover:bg-blue-700 transition-colors">➕ เพิ่มอาคาร</button>
+                    </div>
+
+                    <hr className="border-gray-100" />
+                    <h2 className="text-lg font-bold text-gray-800">รายชื่ออาคารปัจจุบัน</h2>
+                    <div className="space-y-3">
+                        {masterData.buildings.length === 0 ? (
+                            <div className="text-center py-8 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                                <span className="text-3xl mb-2 block">🏢</span>
+                                <span className="text-sm text-gray-400">ยังไม่มีข้อมูลอาคาร</span>
+                            </div>
+                        ) : (
+                            masterData.buildings.map(b => (
+                                <div key={b.id} className="flex items-center justify-between bg-gray-50 p-3 rounded-xl border border-gray-100">
+                                    <div className="font-bold text-sm text-gray-800">{b.name}</div>
+                                    <div className="flex gap-2">
+                                        <button onClick={() => openEditBuilding(b)} className="text-blue-500 bg-blue-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-100">แก้ไข</button>
+                                        <button onClick={() => handleDeleteBuilding(b.id, b.name)} className="text-red-500 bg-red-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-100">ลบ</button>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            )}
+
+            {activeTab === 'rooms' && (
+                <div className="bg-white rounded-4xl shadow-sm border border-gray-100 p-6 space-y-6">
+                    <h2 className="text-lg font-bold text-gray-800">เพิ่มห้องใหม่</h2>
+                    <div className="space-y-3">
+                        <input type="text" placeholder="ชื่อห้อง" value={newRoomName} onChange={e => setNewRoomName(e.target.value)} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl" />
+                        <select value={newRoomBuilding} onChange={e => setNewRoomBuilding(e.target.value)} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl">
+                            <option value="">-- เลือกอาคาร --</option>
+                            {masterData.buildings.map(b => (
+                                <option key={b.id} value={b.id}>{b.name}</option>
+                            ))}
+                        </select>
+                        <button onClick={handleAddRoom} className="w-full bg-green-600 text-white font-bold py-2.5 rounded-xl hover:bg-green-700 transition-colors">➕ เพิ่มห้อง</button>
+                    </div>
+
+                    <hr className="border-gray-100" />
+                    <h2 className="text-lg font-bold text-gray-800">รายชื่อห้องปัจจุบัน</h2>
+                    <div className="space-y-3">
+                        {masterData.buildings.flatMap(b => b.rooms).length === 0 ? (
+                            <div className="text-center py-8 bg-gray-50 rounded-2xl border border-dashed border-gray-200">
+                                <span className="text-3xl mb-2 block">🚪</span>
+                                <span className="text-sm text-gray-400">ยังไม่มีข้อมูลห้อง</span>
+                            </div>
+                        ) : (
+                            masterData.buildings.flatMap(b => b.rooms.map(r => ({ ...r, buildingName: b.name }))).map(r => (
+                                <div key={r.id} className={`flex items-center justify-between p-3 rounded-xl border border-gray-100 transition-colors ${r.is_active === false ? 'bg-red-50 opacity-75' : 'bg-gray-50'}`}>
+                                    <div className="flex-1">
+                                        <div className="font-bold text-sm text-gray-800 flex items-center gap-2">
+                                            {r.name}
+                                            {r.is_active === false && <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full">ปิดใช้งาน</span>}
+                                        </div>
+                                        <div className="text-xs text-gray-500">{r.buildingName}</div>
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <label className="toggle-switch transform scale-75 origin-right" title="เปิด/ปิด การใช้งานห้อง">
+                                            <input
+                                                type="checkbox"
+                                                checked={r.is_active !== false}
+                                                onChange={() => handleToggleRoomStatus(r)}
+                                            />
+                                            <span className="toggle-slider" />
+                                        </label>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => openEditRoom(r)} className="text-blue-500 bg-blue-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-100">แก้ไข</button>
+                                            <button onClick={() => handleDeleteRoom(r.id, r.name)} className="text-red-500 bg-red-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-100">ลบ</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))
+                        )}
+                    </div>
+                </div>
+            )}
+
             {/* Edit Inspector Popup */}
             {editingInspector && (
                 <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
@@ -234,6 +407,49 @@ export default function Admin({ masterData, onRefresh }) {
                             <div className="flex gap-2 mt-6">
                                 <button onClick={() => setEditingInspector(null)} className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 font-bold transition-colors">ยกเลิก</button>
                                 <button onClick={handleUpdateInspector} className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-bold transition-colors">บันทึก</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Building Popup */}
+            {editingBuilding && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-xl animate-fade-in-up">
+                        <h2 className="text-xl font-bold mb-4 text-gray-800">แก้ไขข้อมูลอาคาร</h2>
+                        <div className="space-y-3">
+                            <label className="block text-sm font-medium text-gray-600">ชื่ออาคาร</label>
+                            <input type="text" value={editBuildingName} onChange={e => setEditBuildingName(e.target.value)} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl" />
+
+                            <div className="flex gap-2 mt-6">
+                                <button onClick={() => setEditingBuilding(null)} className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 font-bold transition-colors">ยกเลิก</button>
+                                <button onClick={handleUpdateBuilding} className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-bold transition-colors">บันทึก</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Edit Room Popup */}
+            {editingRoom && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <div className="bg-white rounded-3xl w-full max-w-sm p-6 shadow-xl animate-fade-in-up">
+                        <h2 className="text-xl font-bold mb-4 text-gray-800">แก้ไขข้อมูลห้อง</h2>
+                        <div className="space-y-3">
+                            <label className="block text-sm font-medium text-gray-600">ชื่อห้อง</label>
+                            <input type="text" value={editRoomName} onChange={e => setEditRoomName(e.target.value)} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl" />
+
+                            <label className="block text-sm font-medium text-gray-600 mt-2">อาคาร</label>
+                            <select value={editRoomBuilding} onChange={e => setEditRoomBuilding(e.target.value)} className="w-full px-4 py-2 bg-gray-50 border border-gray-200 rounded-xl">
+                                {masterData.buildings.map(b => (
+                                    <option key={b.id} value={b.id}>{b.name}</option>
+                                ))}
+                            </select>
+
+                            <div className="flex gap-2 mt-6">
+                                <button onClick={() => setEditingRoom(null)} className="flex-1 px-4 py-2.5 bg-gray-100 text-gray-600 rounded-xl hover:bg-gray-200 font-bold transition-colors">ยกเลิก</button>
+                                <button onClick={handleUpdateRoom} className="flex-1 px-4 py-2.5 bg-blue-600 text-white rounded-xl hover:bg-blue-700 font-bold transition-colors">บันทึก</button>
                             </div>
                         </div>
                     </div>

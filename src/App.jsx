@@ -41,10 +41,13 @@ function App() {
       {/* Content */}
       <main className="px-4 pt-4 pb-24">
         {loading ? (
-          <div className="flex flex-col items-center justify-center py-20">
-            <div className="text-4xl animate-bounce mb-4">⏳</div>
-            <p className="text-gray-500 font-medium">กำลังโหลดข้อมูลระบบ...</p>
-            <p className="text-xs text-gray-400 mt-2">โปรดอัปเดตข้อมูลบน Database หากค้าง</p>
+          <div className="space-y-6 mt-4">
+            <div className="bg-gray-200 animate-pulse h-48 rounded-4xl w-full"></div>
+            <div className="bg-gray-200 animate-pulse h-12 rounded-2xl w-3/4 mx-auto"></div>
+            <div className="grid grid-cols-2 gap-4 mt-8">
+              <div className="bg-gray-200 animate-pulse h-40 rounded-4xl"></div>
+              <div className="bg-gray-200 animate-pulse h-40 rounded-4xl"></div>
+            </div>
           </div>
         ) : !masterData ? (
           <div className="flex flex-col items-center justify-center py-20 text-center">
