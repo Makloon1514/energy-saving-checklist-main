@@ -1,8 +1,6 @@
 import { useState, useEffect, useMemo } from 'react';
 import {
-  BUILDINGS,
   CHECKLIST_ITEMS,
-  INSPECTION_SCHEDULE,
   CAMPAIGN_DATES,
   getTodayDateString,
   formatDateThai,
@@ -10,9 +8,11 @@ import {
 } from '../data/constants';
 import { getAllData } from '../data/api';
 
-export default function Dashboard() {
-  const todayStr = getTodayDateString();
-  const todayDayIndex = new Date(todayStr).getDay();
+export default function Dashboard({ masterData }) {
+  const BUILDINGS = masterData?.buildings || [];
+  const INSPECTION_SCHEDULE = masterData?.schedules || [];
+  const [viewDate, setViewDate] = useState(getTodayDateString());
+  const viewDayIndex = new Date(viewDate).getDay();
 
   const [activeSection, setActiveSection] = useState('today');
   const [todayStatusData, setTodayStatusData] = useState({});
@@ -27,7 +27,7 @@ export default function Dashboard() {
     async function fetchData() {
       setLoading(true);
       try {
-        const result = await getAllData(todayStr);
+        const result = await getAllData(viewDate);
         if (result.success) {
           setTodayStatusData(result.status || {});
           setScoresData(result.scores || []);
@@ -40,7 +40,7 @@ export default function Dashboard() {
       }
     }
     fetchData();
-  }, [todayStr]);
+  }, [viewDate]);
 
   // Stats
   const totalRooms = BUILDINGS.reduce((sum, b) => sum + b.rooms.length, 0);
@@ -77,14 +77,54 @@ export default function Dashboard() {
     { id: 'sheet', label: 'ตาราง', icon: '📃' },
   ];
 
+  const handleExportCSV = () => {
+    if (filteredRecords.length === 0) return alert('ไม่มีข้อมูลให้ Export');
+    const headers = ['วันที่', 'ผู้ตรวจ', 'อาคาร', 'ห้อง', ...CHECKLIST_ITEMS.map(i => i.label), 'สถานะ', 'คะแนน', 'เวลาบันทึก'];
+    const rows = filteredRecords.map(r => [
+      r.date, // YYYY-MM-DD
+      r.inspector,
+      r.building,
+      r.room,
+      ...CHECKLIST_ITEMS.map(i => r[i.id] ? 'ผ่าน' : 'ไม่ผ่าน'),
+      r.status,
+      r.score,
+      new Date(r.timestamp).toLocaleString('th-TH')
+    ]);
+
+    // Add BOM for Excel UTF-8
+    const csvContent = "data:text/csv;charset=utf-8,\uFEFF" +
+      [headers.join(','), ...rows.map(e => e.join(','))].join('\n');
+
+    const encodedUri = encodeURI(csvContent);
+    const link = document.createElement('a');
+    link.setAttribute('href', encodedUri);
+    link.setAttribute('download', `energy_saving_report_${filterDate || 'all'}.csv`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
     <div className="max-w-4xl mx-auto pb-24">
       {/* Header */}
-      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 mb-4">
-        <h1 className="text-xl font-bold text-gray-800 mb-1">📊 Dashboard</h1>
-        <p className="text-sm text-gray-500">
-          สรุปผลแคมเปญประหยัดพลังงาน | {getThaiDayOfWeek(todayStr)} {formatDateThai(todayStr)}
-        </p>
+      <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 mb-4 flex justify-between items-center flex-wrap gap-4">
+        <div>
+          <h1 className="text-xl font-bold text-gray-800 mb-1">📊 Dashboard</h1>
+          <p className="text-sm text-gray-500">
+            สรุปผลแคมเปญประหยัดพลังงาน | {getThaiDayOfWeek(viewDate)} {formatDateThai(viewDate)}
+          </p>
+        </div>
+
+        {/* Master Date Selector */}
+        <div className="flex items-center gap-3 bg-blue-50 px-4 py-2.5 rounded-xl border border-blue-100 shadow-inner">
+          <span className="text-sm text-blue-700 font-bold">📅 เลือกวันดูผล:</span>
+          <input
+            type="date"
+            value={viewDate}
+            onChange={(e) => setViewDate(e.target.value)}
+            className="bg-white border border-blue-200 text-blue-800 text-sm rounded-lg px-3 py-1.5 outline-none focus:ring-2 focus:ring-blue-400 font-medium cursor-pointer shadow-sm"
+          />
+        </div>
       </div>
 
       {/* Section Tabs */}
@@ -94,8 +134,8 @@ export default function Dashboard() {
             key={sec.id}
             onClick={() => setActiveSection(sec.id)}
             className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-medium whitespace-nowrap transition-all duration-200 ${activeSection === sec.id
-                ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
-                : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
+              ? 'bg-blue-600 text-white shadow-md shadow-blue-200'
+              : 'bg-white text-gray-600 border border-gray-200 hover:bg-gray-50'
               }`}
           >
             <span>{sec.icon}</span> {sec.label}
@@ -169,10 +209,10 @@ export default function Dashboard() {
                           <div className="flex items-center gap-3">
                             <span
                               className={`w-2.5 h-2.5 rounded-full ${status === 'pass'
-                                  ? 'bg-green-500'
-                                  : status === 'partial'
-                                    ? 'bg-yellow-400'
-                                    : 'bg-gray-200'
+                                ? 'bg-green-500'
+                                : status === 'partial'
+                                  ? 'bg-yellow-400'
+                                  : 'bg-gray-200'
                                 }`}
                             />
                             <span className="text-sm text-gray-700">{room.name}</span>
@@ -185,8 +225,8 @@ export default function Dashboard() {
                                     key={item.id}
                                     title={item.label}
                                     className={`text-[10px] w-5 h-5 rounded-full flex items-center justify-center ${record[item.id]
-                                        ? 'bg-green-100 text-green-600'
-                                        : 'bg-red-100 text-red-500'
+                                      ? 'bg-green-100 text-green-600'
+                                      : 'bg-red-100 text-red-500'
                                       }`}
                                   >
                                     {item.icon}
@@ -262,7 +302,7 @@ export default function Dashboard() {
                     </thead>
                     <tbody>
                       {INSPECTION_SCHEDULE.map((s) => {
-                        const isToday = s.dayIndex === todayDayIndex;
+                        const isToday = s.dayIndex === viewDayIndex;
                         const b1 = s.inspectors.find((i) => i.buildingId === 'building-1');
                         const b3 = s.inspectors.find((i) => i.buildingId === 'building-3');
                         return (
@@ -381,6 +421,14 @@ export default function Dashboard() {
                       </option>
                     ))}
                   </select>
+
+                  {/* Export Button */}
+                  <button
+                    onClick={handleExportCSV}
+                    className="flex items-center gap-2 bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl text-sm font-bold shadow-sm transition-colors active:scale-95"
+                  >
+                    <span>📥</span> Export CSV
+                  </button>
                 </div>
               </div>
 
@@ -459,10 +507,10 @@ export default function Dashboard() {
                             <td className="text-center px-3 py-2.5">
                               <span
                                 className={`inline-block px-2 py-0.5 rounded-full text-[10px] font-medium ${r.status === 'ผ่านครบ'
-                                    ? 'bg-green-100 text-green-700'
-                                    : String(r.status).includes('ผ่าน')
-                                      ? 'bg-yellow-100 text-yellow-700'
-                                      : 'bg-red-100 text-red-600'
+                                  ? 'bg-green-100 text-green-700'
+                                  : String(r.status).includes('ผ่าน')
+                                    ? 'bg-yellow-100 text-yellow-700'
+                                    : 'bg-red-100 text-red-600'
                                   }`}
                               >
                                 {r.status}

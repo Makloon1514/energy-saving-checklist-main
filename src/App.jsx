@@ -1,15 +1,29 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import './index.css';
 import ChecklistForm from './pages/ChecklistForm';
 import Dashboard from './pages/Dashboard';
+import Admin from './pages/Admin';
+import { getMasterData } from './data/api';
 
 const TABS = [
   { id: 'checklist', label: 'ฟอร์มตรวจ', icon: '📋' },
   { id: 'dashboard', label: 'Dashboard', icon: '📊' },
+  { id: 'admin', label: 'Admin', icon: '⚙️' },
 ];
 
 function App() {
   const [activeTab, setActiveTab] = useState('checklist');
+  const [masterData, setMasterData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    async function loadMasterData() {
+      const data = await getMasterData();
+      setMasterData(data);
+      setLoading(false);
+    }
+    loadMasterData();
+  }, []);
 
   return (
     <div className="min-h-screen bg-gray-50 font-thai">
@@ -25,11 +39,25 @@ function App() {
       </header>
 
       {/* Content */}
-      <main className="px-4 pt-4">
-        {activeTab === 'checklist' ? (
-          <ChecklistForm />
+      <main className="px-4 pt-4 pb-24">
+        {loading ? (
+          <div className="flex flex-col items-center justify-center py-20">
+            <div className="text-4xl animate-bounce mb-4">⏳</div>
+            <p className="text-gray-500 font-medium">กำลังโหลดข้อมูลระบบ...</p>
+            <p className="text-xs text-gray-400 mt-2">โปรดอัปเดตข้อมูลบน Database หากค้าง</p>
+          </div>
+        ) : !masterData ? (
+          <div className="flex flex-col items-center justify-center py-20 text-center">
+            <div className="text-4xl mb-4">⚠️</div>
+            <p className="text-red-500 font-bold">ไม่สามารถเชื่อมต่อฐานข้อมูลได้</p>
+            <p className="text-sm text-gray-500 mt-2">โปรดตรวจสอบ URL และ Key ของ Supabase</p>
+          </div>
+        ) : activeTab === 'checklist' ? (
+          <ChecklistForm masterData={masterData} onRefresh={() => getMasterData().then(setMasterData)} />
+        ) : activeTab === 'dashboard' ? (
+          <Dashboard key="dashboard" masterData={masterData} />
         ) : (
-          <Dashboard key="dashboard" />
+          <Admin masterData={masterData} onRefresh={() => getMasterData().then(setMasterData)} />
         )}
       </main>
 
@@ -40,15 +68,13 @@ function App() {
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
-              className={`flex-1 flex flex-col items-center py-3 transition-colors duration-200 relative ${
-                activeTab === tab.id ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'
-              }`}
+              className={`flex-1 flex flex-col items-center py-3 transition-colors duration-200 relative ${activeTab === tab.id ? 'text-blue-600' : 'text-gray-400 hover:text-gray-600'
+                }`}
             >
               <span className="text-xl">{tab.icon}</span>
               <span
-                className={`text-[11px] mt-1 ${
-                  activeTab === tab.id ? 'font-semibold' : 'font-medium'
-                }`}
+                className={`text-[11px] mt-1 ${activeTab === tab.id ? 'font-semibold' : 'font-medium'
+                  }`}
               >
                 {tab.label}
               </span>

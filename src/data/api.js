@@ -42,6 +42,95 @@ export function clearCache() {
   }
 }
 
+// ===== GET MASTER DATA =====
+// Fetches buildings, rooms, inspectors, and schedules dynamically
+export async function getMasterData() {
+  if (!isConfigured()) return null;
+
+  const cacheKey = `${CACHE_KEY}_master`;
+  const cached = getCachedData(cacheKey);
+  if (cached) return cached;
+
+  try {
+    const [
+      { data: buildings },
+      { data: rooms },
+      { data: inspectors },
+      { data: schedules }
+    ] = await Promise.all([
+      supabase.from('buildings').select('*').order('id'),
+      supabase.from('rooms').select('*').order('id'),
+      supabase.from('inspectors').select('*'),
+      supabase.from('schedules').select('*').order('day_index')
+    ]);
+
+    // Format Data
+    const formattedBuildings = (buildings || []).map(b => ({
+      ...b,
+      rooms: (rooms || []).filter(r => r.building_id === b.id)
+    }));
+
+    const formattedSchedules = [];
+    const days = ['อาทิตย์', 'จันทร์', 'อังคาร', 'พุธ', 'พฤหัสบดี', 'ศุกร์', 'เสาร์'];
+
+    // Group schedules by day_index
+    for (let i = 1; i <= 5; i++) {
+      const daySchedules = (schedules || []).filter(s => s.day_index === i);
+      formattedSchedules.push({
+        day: days[i],
+        dayIndex: i,
+        inspectors: daySchedules.map(s => {
+          const b = buildings?.find(bld => bld.id === s.building_id);
+          return {
+            name: s.inspector_name,
+            buildingId: s.building_id,
+            buildingName: b ? b.name : ''
+          };
+        })
+      });
+    }
+
+    const result = {
+      buildings: formattedBuildings,
+      inspectors: inspectors || [],
+      schedules: formattedSchedules
+    };
+
+    setCachedData(cacheKey, result);
+    return result;
+  } catch (error) {
+    console.error('getMasterData error:', error);
+    return null;
+  }
+}
+
+// ===== ADMIN CRUD OPERATIONS =====
+
+export async function addInspector(inspector) {
+  clearCache();
+  return supabase.from('inspectors').insert(inspector);
+}
+
+export async function deleteInspector(name) {
+  clearCache();
+  return supabase.from('inspectors').delete().eq('name', name);
+}
+
+export async function updateInspector(oldName, inspector) {
+  clearCache();
+  return supabase.from('inspectors').update(inspector).eq('name', oldName);
+}
+
+export async function addSchedule(schedule) {
+  clearCache();
+  return supabase.from('schedules').insert(schedule);
+}
+
+export async function deleteSchedule(dayIndex, inspectorName) {
+  clearCache();
+  return supabase.from('schedules').delete().match({ day_index: dayIndex, inspector_name: inspectorName });
+}
+
 // ===== GET ALL DATA (combined view) =====
 export async function getAllData(date) {
   if (!isConfigured()) {
@@ -76,7 +165,7 @@ export async function getAllData(date) {
         inspector: row.inspector,
         buildingId: row.building_id,
         buildingName: row.building_name,
-        building: row.building_name, 
+        building: row.building_name,
         roomId: row.room_id,
         roomName: row.room_name,
         room: row.room_name,

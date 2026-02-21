@@ -2,17 +2,39 @@ import { useState, useCallback, useEffect } from 'react';
 import {
   CHECKLIST_ITEMS,
   getTodayDateString,
-  getTodayInspectors,
-  getInspectorAssignment,
   formatDateThai,
   getThaiDayOfWeek,
-  ALL_INSPECTORS,
 } from '../data/constants';
 import { submitChecklist, isConfigured, getRecords } from '../data/api';
 
-export default function ChecklistForm() {
+export default function ChecklistForm({ masterData }) {
   const todayStr = getTodayDateString();
-  const todayInspectors = getTodayInspectors(todayStr);
+  const dayIndex = new Date(todayStr).getDay();
+
+  const todaySchedule = masterData?.schedules?.find(s => s.dayIndex === dayIndex);
+  const todayInspectorsRaw = todaySchedule ? todaySchedule.inspectors : [];
+
+  const groupedInspectorsObj = todayInspectorsRaw.reduce((acc, curr) => {
+    const insp = masterData.inspectors.find(i => i.name === curr.name);
+    if (!acc[curr.name]) {
+      acc[curr.name] = {
+        name: curr.name,
+        image: insp?.image_url,
+        default_building: insp?.default_building,
+        buildingIds: [curr.buildingId],
+        buildingNames: [curr.buildingName]
+      };
+    } else {
+      if (!acc[curr.name].buildingIds.includes(curr.buildingId)) {
+        acc[curr.name].buildingIds.push(curr.buildingId);
+        acc[curr.name].buildingNames.push(curr.buildingName);
+      }
+    }
+    return acc;
+  }, {});
+  const todayInspectors = Object.values(groupedInspectorsObj);
+
+  const ALL_INSPECTORS = masterData?.inspectors || [];
 
   // Step state
   const [selectedInspector, setSelectedInspector] = useState(null);
@@ -24,9 +46,11 @@ export default function ChecklistForm() {
   const [loadingExisting, setLoadingExisting] = useState(false);
 
   // Get assignment for selected inspector
-  const assignment = selectedInspector
-    ? getInspectorAssignment(selectedInspector, todayStr)
-    : null;
+  const assignmentInfo = todayInspectors.find(i => i.name === selectedInspector);
+  const assignment = assignmentInfo ? {
+    inspectorName: assignmentInfo.name,
+    buildings: assignmentInfo.buildingIds.map(id => masterData.buildings.find(b => b.id === id)).filter(Boolean)
+  } : null;
 
   // Fetch existing records when inspector is selected
   useEffect(() => {
@@ -40,19 +64,21 @@ export default function ChecklistForm() {
           const newCheckStates = {};
           const newSavedRooms = {};
 
-          assignment.building.rooms.forEach((room) => {
-            const record = res.records.find(
-              (r) => r.date === todayStr && r.building === assignment.building.name && r.room === room.name
-            );
-            if (record) {
-              newCheckStates[room.id] = {
-                lights: record.lights,
-                computer: record.computer,
-                aircon: record.aircon,
-                fan: record.fan,
-              };
-              newSavedRooms[room.id] = true;
-            }
+          assignment.buildings.forEach(building => {
+            building.rooms.forEach((room) => {
+              const record = res.records.find(
+                (r) => r.date === todayStr && r.building === building.name && r.room === room.name
+              );
+              if (record) {
+                newCheckStates[room.id] = {
+                  lights: record.lights,
+                  computer: record.computer,
+                  aircon: record.aircon,
+                  fan: record.fan,
+                };
+                newSavedRooms[room.id] = true;
+              }
+            });
           });
 
           setCheckStates(newCheckStates);
@@ -65,7 +91,7 @@ export default function ChecklistForm() {
       }
     }
     loadExisting();
-  }, [selectedInspector, todayStr, assignment?.building?.name]);
+  }, [selectedInspector, todayStr, assignment ? assignment.buildings.map(b => b.name).join(',') : '']);
 
   const getRoomChecks = useCallback(
     (roomId) => {
@@ -92,7 +118,7 @@ export default function ChecklistForm() {
     });
   };
 
-  const handleSubmitRoom = async (room) => {
+  const handleSubmitRoom = async (room, building) => {
     if (!assignment) return;
 
     // Ask for confirmation if the room was already saved
@@ -111,8 +137,8 @@ export default function ChecklistForm() {
       date: todayStr,
       dayName: getThaiDayOfWeek(todayStr),
       inspector: selectedInspector,
-      buildingId: assignment.building.id,
-      buildingName: assignment.building.name,
+      buildingId: building.id,
+      buildingName: building.name,
       items: [
         {
           roomId: room.id,
@@ -136,6 +162,79 @@ export default function ChecklistForm() {
       setSubmitResult({ roomId: room.id, success: false });
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handleSaveAll = async () => {
+    if (!assignment) return;
+
+
+    // Find rooms that have at least one toggle checked
+    const roomsToAutoSave = [];
+    assignment.buildings.forEach(b => {
+      b.rooms.forEach(r => {
+        // Only consider rooms that haven't been saved yet OR have at least one toggle checked
+        // This allows re-saving rooms that were previously saved but now have changes
+        const checks = getRoomChecks(r.id);
+        const hasAnySet = CHECKLIST_ITEMS.some(item => checks[item.id]);
+
+        // If the room is not saved, and has any checks, add it
+        // OR if the room is already saved, but has any checks, add it (to allow updates)
+        if (!savedRooms[r.id] && hasAnySet) {
+          roomsToAutoSave.push({ room: r, building: b });
+        } else if (savedRooms[r.id] && hasAnySet) {
+          // If already saved, but has checks, we'll include it for potential update
+          roomsToAutoSave.push({ room: r, building: b });
+        }
+      });
+    });
+
+    if (roomsToAutoSave.length === 0) {
+      return alert('ไม่มีห้องที่ถูกติ๊กตรวจสอบเพิ่มครับ (ข้ามห้องที่ไม่ได้กดสวิตช์อะไรเลย)');
+    }
+
+    const confirmSave = window.confirm(`ยืนยันบันทึกข้อมูล ${roomsToAutoSave.length} ห้อง ที่มีการติ๊กตรวจแล้วใช่หรือไม่?\n(ห้องที่ไม่ได้กดอะไรเลยจะถูกข้ามไว้ก่อน)`);
+    if (!confirmSave) return;
+
+    setSubmitting(true);
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const { room, building } of roomsToAutoSave) {
+      const checks = getRoomChecks(room.id);
+      const data = {
+        date: todayStr,
+        dayName: getThaiDayOfWeek(todayStr),
+        inspector: selectedInspector,
+        buildingId: building.id,
+        buildingName: building.name,
+        items: [
+          {
+            roomId: room.id,
+            roomName: room.name,
+            lights: checks.lights || false,
+            computer: checks.computer || false,
+            aircon: checks.aircon || false,
+            fan: checks.fan || false,
+          },
+        ],
+      };
+
+      try {
+        await submitChecklist(data);
+        setSavedRooms((prev) => ({ ...prev, [room.id]: true }));
+        successCount++;
+      } catch (err) {
+        console.error('Save all record error:', err);
+        errorCount++;
+      }
+    }
+
+    setSubmitting(false);
+    if (successCount > 0) {
+      alert(`บันทึกสำเร็จ ${successCount} ห้อง` + (errorCount > 0 ? ` (ไม่สำเร็จ ${errorCount} ห้อง)` : ''));
+    } else if (errorCount > 0) {
+      alert('เกิดข้อผิดพลาดในการบันทึกข้อมูล กรุณาลองใหม่');
     }
   };
 
@@ -229,8 +328,8 @@ export default function ChecklistForm() {
                 {/* Info */}
                 <div className="relative z-10 text-center w-full">
                   <div className="font-bold text-gray-800 text-sm mb-1.5 truncate group-hover:text-blue-700 transition-colors">{inspector.name}</div>
-                  <div className="text-[10px] font-semibold text-indigo-600 bg-indigo-50/80 backdrop-blur-sm px-2.5 py-1 rounded-xl inline-block truncate max-w-[90%] border border-indigo-100/50">
-                    🏢 {inspector.buildingName}
+                  <div className="text-[10px] font-semibold text-indigo-600 bg-indigo-50/80 backdrop-blur-sm px-2.5 py-1 rounded-xl inline-block truncate max-w-full border border-indigo-100/50">
+                    🏢 {inspector.buildingNames.join(', ')}
                   </div>
                 </div>
               </button>
@@ -243,8 +342,8 @@ export default function ChecklistForm() {
                 className="flex flex-col items-center p-4 rounded-[1.5rem] border border-gray-100 bg-gray-50/30 grayscale opacity-[0.55] cursor-not-allowed transform scale-[0.98]"
               >
                 <div className="w-16 h-16 rounded-full mb-3 shadow-inner overflow-hidden border-[2px] border-white bg-gray-100 flex-shrink-0">
-                  {inspector.image ? (
-                    <img src={inspector.image} alt={inspector.name} className="w-full h-full object-cover object-top" />
+                  {inspector.image_url ? (
+                    <img src={inspector.image_url} alt={inspector.name} className="w-full h-full object-cover object-top" />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center text-xl font-bold text-gray-400 bg-gray-100">
                       {inspector.name.charAt(0)}
@@ -254,7 +353,7 @@ export default function ChecklistForm() {
                 <div className="text-center w-full">
                   <div className="font-semibold text-gray-500 text-xs truncate mb-1">{inspector.name}</div>
                   <div className="text-[9px] font-medium text-gray-400 bg-gray-200/50 px-2 py-0.5 rounded-lg inline-block truncate max-w-[90%]">
-                    {inspector.defaultBuilding}
+                    {inspector.default_building || 'ไม่ระบุอาคาร'}
                   </div>
                 </div>
               </div>
@@ -321,94 +420,125 @@ export default function ChecklistForm() {
         <div className="flex items-center gap-3">
           <span className="text-xs font-medium text-gray-500 w-14">อาคาร:</span>
           <span className="bg-purple-50 text-purple-700 px-3 py-1.5 rounded-lg text-xs font-medium">
-            🏢 {assignment.building.name}
+            🏢 {assignment.buildings.map(b => b.name).join(', ')}
           </span>
         </div>
       </div>
 
-      {/* Room Cards — one room at a time */}
-      {assignment.building.rooms.map((room) => {
-        const checks = getRoomChecks(room.id);
-        const allChecked = CHECKLIST_ITEMS.every((item) => checks[item.id]);
-        const isSaved = savedRooms[room.id];
-        const roomScore = CHECKLIST_ITEMS.filter((item) => checks[item.id]).length;
+      {/* Buildings & Room Cards */}
+      {assignment.buildings.map((building) => (
+        <div key={building.id} className="mb-6">
+          <h2 className="text-lg font-bold text-gray-800 mb-3 ml-2 flex items-center gap-2">
+            <span className="bg-purple-100 text-purple-600 p-1.5 rounded-lg text-sm">🏢</span> {building.name}
+          </h2>
+          {building.rooms.map((room) => {
+            const checks = getRoomChecks(room.id);
+            const allChecked = CHECKLIST_ITEMS.every((item) => checks[item.id]);
+            const isSaved = savedRooms[room.id];
+            const roomScore = CHECKLIST_ITEMS.filter((item) => checks[item.id]).length;
 
-        return (
-          <div
-            key={room.id}
-            className={`bg-white rounded-2xl shadow-sm border mb-3 overflow-hidden transition-all duration-300 ${isSaved ? 'border-green-300' : 'border-gray-200'
-              }`}
-          >
-            {/* Room Header */}
-            <div
-              className={`px-4 py-3 flex items-center justify-between ${allChecked ? 'bg-green-50' : 'bg-gray-50'
-                }`}
-            >
-              <div className="flex items-center gap-2">
-                <span className={`w-2.5 h-2.5 rounded-full ${allChecked ? 'bg-green-500' : 'bg-gray-300'}`} />
-                <span className="font-semibold text-sm text-gray-800">🚪 {room.name}</span>
-              </div>
-              <div className="flex items-center gap-2">
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${roomScore === 4 ? 'bg-green-100 text-green-700' : roomScore > 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500'
-                  }`}>
-                  ⭐ {roomScore}/4 คะแนน
-                </span>
-                {isSaved && (
-                  <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
-                    ✅ บันทึกแล้ว
-                  </span>
-                )}
-              </div>
-            </div>
-
-            {/* Checklist Items */}
-            <div className="p-4 space-y-3">
-              {CHECKLIST_ITEMS.map((item) => (
-                <div key={item.id} className="flex items-center justify-between">
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg">{item.icon}</span>
-                    <span className="text-sm text-gray-700">{item.label}</span>
-                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${checks[item.id] ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
-                      }`}>
-                      {checks[item.id] ? '+1' : '0'}
-                    </span>
-                  </div>
-                  <label className="toggle-switch">
-                    <input
-                      type="checkbox"
-                      checked={checks[item.id] || false}
-                      onChange={() => handleToggle(room.id, item.id)}
-                    />
-                    <span className="toggle-slider" />
-                  </label>
-                </div>
-              ))}
-            </div>
-
-            {/* Save Button — per room */}
-            <div className="px-4 pb-4">
-              <button
-                onClick={() => handleSubmitRoom(room)}
-                disabled={submitting}
-                className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${submitResult?.roomId === room.id && submitResult?.success
-                  ? 'bg-green-500 text-white'
-                  : submitting
-                    ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
-                    : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-[0.98] shadow-sm'
+            return (
+              <div
+                key={room.id}
+                className={`bg-white rounded-2xl shadow-sm border mb-3 overflow-hidden transition-all duration-300 ${isSaved ? 'border-green-300' : 'border-gray-200'
                   }`}
               >
-                {submitResult?.roomId === room.id && submitResult?.success
-                  ? '✅ บันทึกสำเร็จ!'
-                  : submitting
-                    ? '⏳ กำลังบันทึก...'
-                    : isSaved
-                      ? '🔄 อัปเดต'
-                      : '💾 บันทึก'}
-              </button>
-            </div>
-          </div>
-        );
-      })}
+                {/* Room Header */}
+                <div
+                  className={`px-4 py-3 flex items-center justify-between ${allChecked ? 'bg-green-50' : 'bg-gray-50'
+                    }`}
+                >
+                  <div className="flex items-center gap-2">
+                    <span className={`w-2.5 h-2.5 rounded-full ${allChecked ? 'bg-green-500' : 'bg-gray-300'}`} />
+                    <span className="font-semibold text-sm text-gray-800">🚪 {room.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${roomScore === 4 ? 'bg-green-100 text-green-700' : roomScore > 0 ? 'bg-yellow-100 text-yellow-700' : 'bg-gray-100 text-gray-500'
+                      }`}>
+                      ⭐ {roomScore}/4 คะแนน
+                    </span>
+                    {isSaved && (
+                      <span className="text-xs bg-green-100 text-green-700 px-2 py-0.5 rounded-full font-medium">
+                        ✅ บันทึกแล้ว
+                      </span>
+                    )}
+                  </div>
+                </div>
+
+                {/* Checklist Items */}
+                <div className="p-4 space-y-3">
+                  {CHECKLIST_ITEMS.map((item) => (
+                    <div key={item.id} className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <span className="text-lg">{item.icon}</span>
+                        <span className="text-sm text-gray-700">{item.label}</span>
+                        <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${checks[item.id] ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-400'
+                          }`}>
+                          {checks[item.id] ? '+1' : '0'}
+                        </span>
+                      </div>
+                      <label className="toggle-switch">
+                        <input
+                          type="checkbox"
+                          checked={checks[item.id] || false}
+                          onChange={() => handleToggle(room.id, item.id)}
+                        />
+                        <span className="toggle-slider" />
+                      </label>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Save Button */}
+                <div className="px-4 pb-4">
+                  <button
+                    onClick={() => handleSubmitRoom(room, building)}
+                    disabled={submitting}
+                    className={`w-full py-2.5 rounded-xl text-sm font-semibold transition-all duration-200 ${submitResult?.roomId === room.id && submitResult?.success
+                      ? 'bg-green-500 text-white'
+                      : submitting
+                        ? 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                        : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-[0.98] shadow-sm'
+                      }`}
+                  >
+                    {submitResult?.roomId === room.id && submitResult?.success
+                      ? '✅ บันทึกสำเร็จ!'
+                      : submitting
+                        ? '⏳ กำลังบันทึก...'
+                        : isSaved
+                          ? '🔄 อัปเดต'
+                          : '💾 บันทึก'}
+                  </button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ))}
+
+      {/* Save All Floating Button */}
+      <div className="fixed bottom-20 left-0 right-0 p-4 pointer-events-none z-40 flex justify-center">
+        <button
+          onClick={handleSaveAll}
+          disabled={submitting}
+          className={`pointer-events-auto shadow-[0_8px_30px_rgb(0,0,0,0.12)] max-w-lg w-full py-3.5 rounded-2xl font-bold flex items-center justify-center gap-2 transition-all duration-300 transform active:scale-95 ${submitting
+            ? 'bg-gray-400 text-white cursor-not-allowed'
+            : 'bg-gradient-to-r from-blue-600 to-indigo-600 text-white hover:shadow-[0_8px_30px_rgba(59,130,246,0.3)] hover:-translate-y-1'
+            }`}
+        >
+          {submitting ? (
+            <>
+              <span className="animate-spin text-xl">⏳</span>
+              กำลังบันทึกทั้งหมด...
+            </>
+          ) : (
+            <>
+              <span className="text-xl">💾</span>
+              บันทึกห้องที่ยังไม่เซฟทั้งหมด
+            </>
+          )}
+        </button>
+      </div>
     </div>
   );
 }
