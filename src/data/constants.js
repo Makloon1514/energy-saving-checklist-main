@@ -1,7 +1,7 @@
 // constants.js
 
 export const CAMPAIGN_DATES = {
-  inspectionStart: '2026-02-18', // วันเริ่มตรวจ
+  inspectionStart: '2026-02-23', // วันเริ่มตรวจ
   campaignStart: '2026-03-01',   // วันเริ่มแคมเปญ
   yearEnd: '2026-12-31',         // วันสิ้นปี-ประกาศผล
 };
