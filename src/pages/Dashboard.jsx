@@ -250,12 +250,15 @@ export default function Dashboard({ masterData }) {
                   </div>
               </div>
 
-              {/* Building Status */}
               {BUILDINGS.map((building) => {
                 // Filter active rooms or rooms that have records today
                 const visibleRooms = building.rooms.filter(room => {
                   const key = `${building.name}|${room.name}`;
                   const hasRecordToday = !!todayStatusData[key];
+                  
+                  // If building is inactive and it doesn't have a record today, don't show its rooms
+                  if (building.is_active === false && !hasRecordToday) return false;
+                  
                   return room.is_active !== false || hasRecordToday;
                 });
 
