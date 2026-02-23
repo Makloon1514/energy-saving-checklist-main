@@ -44,6 +44,7 @@ export default function Dashboard({ masterData }) {
 
   // Stats
   const totalRooms = BUILDINGS.reduce((sum, b) => {
+    if (b.is_active === false) return sum;
     const activeRoomsCount = b.rooms.filter(r => r.is_active !== false).length;
     return sum + activeRoomsCount;
   }, 0);
@@ -265,8 +266,11 @@ export default function Dashboard({ masterData }) {
                     key={building.id}
                     className="bg-white rounded-2xl shadow-sm border border-gray-200 mb-3 overflow-hidden"
                   >
-                    <div className="bg-gray-50 px-4 py-3 border-b border-gray-100">
-                      <h3 className="font-semibold text-sm text-gray-800">🏢 {building.name}</h3>
+                    <div className="bg-gray-50 px-4 py-3 border-b border-gray-100 flex items-center justify-between">
+                      <h3 className="font-semibold text-sm text-gray-800">
+                        🏢 {building.name}
+                        {building.is_active === false && <span className="text-[10px] text-red-500 ml-2 bg-red-100 px-2 py-0.5 rounded-full font-bold">ปิดใช้งาน</span>}
+                      </h3>
                     </div>
                     <div className="divide-y divide-gray-50">
                       {visibleRooms.map((room) => {
@@ -490,7 +494,7 @@ export default function Dashboard({ masterData }) {
                     <option value="">ทุกอาคาร</option>
                     {BUILDINGS.map((b) => (
                       <option key={b.id} value={b.name}>
-                        {b.name}
+                        {b.name}{b.is_active === false ? ' (ปิดใช้งาน)' : ''}
                       </option>
                     ))}
                   </select>

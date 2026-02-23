@@ -171,6 +171,12 @@ export default function Admin({ masterData, onRefresh }) {
         onRefresh();
     };
 
+    const handleToggleBuildingStatus = async (building) => {
+        const newStatus = building.is_active === false ? true : false;
+        await updateBuilding(building.id, { is_active: newStatus });
+        onRefresh();
+    };
+
     return (
         <div className="max-w-lg mx-auto pb-8 relative">
             <div className="bg-white rounded-4xl shadow-sm border border-gray-100 p-8 mb-6 text-center">
@@ -319,11 +325,24 @@ export default function Admin({ masterData, onRefresh }) {
                             </div>
                         ) : (
                             masterData.buildings.map(b => (
-                                <div key={b.id} className="flex items-center justify-between bg-gray-50 p-3 rounded-xl border border-gray-100">
-                                    <div className="font-bold text-sm text-gray-800">{b.name}</div>
-                                    <div className="flex gap-2">
-                                        <button onClick={() => openEditBuilding(b)} className="text-blue-500 bg-blue-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-100">แก้ไข</button>
-                                        <button onClick={() => handleDeleteBuilding(b.id, b.name)} className="text-red-500 bg-red-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-100">ลบ</button>
+                                <div key={b.id} className={`flex items-center justify-between p-3 rounded-xl border border-gray-100 transition-colors ${b.is_active === false ? 'bg-red-50 opacity-75' : 'bg-gray-50'}`}>
+                                    <div className="font-bold text-sm text-gray-800 flex items-center gap-2">
+                                        {b.name}
+                                        {b.is_active === false && <span className="text-[10px] bg-red-100 text-red-600 px-2 py-0.5 rounded-full">ปิดใช้งาน</span>}
+                                    </div>
+                                    <div className="flex items-center gap-3">
+                                        <label className="toggle-switch transform scale-75 origin-right" title="เปิด/ปิด การใช้งานอาคาร">
+                                            <input
+                                                type="checkbox"
+                                                checked={b.is_active !== false}
+                                                onChange={() => handleToggleBuildingStatus(b)}
+                                            />
+                                            <span className="toggle-slider" />
+                                        </label>
+                                        <div className="flex gap-2">
+                                            <button onClick={() => openEditBuilding(b)} className="text-blue-500 bg-blue-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-blue-100">แก้ไข</button>
+                                            <button onClick={() => handleDeleteBuilding(b.id, b.name)} className="text-red-500 bg-red-50 px-3 py-1.5 rounded-lg text-xs font-bold hover:bg-red-100">ลบ</button>
+                                        </div>
                                     </div>
                                 </div>
                             ))

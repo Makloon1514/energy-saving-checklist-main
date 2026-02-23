@@ -50,7 +50,9 @@ export default function ChecklistForm({ masterData }) {
   const assignmentInfo = todayInspectors.find(i => i.name === selectedInspector);
   const assignment = assignmentInfo ? {
     inspectorName: assignmentInfo.name,
-    buildings: assignmentInfo.buildingIds.map(id => masterData.buildings.find(b => b.id === id)).filter(Boolean)
+    buildings: assignmentInfo.buildingIds
+      .map(id => masterData.buildings.find(b => b.id === id))
+      .filter(b => b && b.is_active !== false)
   } : null;
 
   // Fetch existing records when inspector is selected
