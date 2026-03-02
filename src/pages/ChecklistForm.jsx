@@ -39,6 +39,8 @@ export default function ChecklistForm({ masterData }) {
 
   // Step state
   const [selectedInspector, setSelectedInspector] = useState(null);
+  const [isSubstituting, setIsSubstituting] = useState(false);
+  const [substituteBuildingId, setSubstituteBuildingId] = useState(null);
   const [checkStates, setCheckStates] = useState({});
   const [submitting, setSubmitting] = useState(false);
   const [submitResult, setSubmitResult] = useState(null);
@@ -48,16 +50,27 @@ export default function ChecklistForm({ masterData }) {
 
   // Get assignment for selected inspector
   const assignmentInfo = todayInspectors.find(i => i.name === selectedInspector);
-  const assignment = assignmentInfo ? {
-    inspectorName: assignmentInfo.name,
-    buildings: assignmentInfo.buildingIds
-      .map(id => masterData.buildings.find(b => b.id === id))
-      .filter(b => b && b.is_active !== false)
-  } : null;
+  
+  let assignment = null;
+  if (assignmentInfo) {
+    assignment = {
+      inspectorName: assignmentInfo.name,
+      buildings: assignmentInfo.buildingIds
+        .map(id => masterData.buildings.find(b => b.id === id))
+        .filter(b => b && b.is_active !== false)
+    };
+  } else if (selectedInspector && isSubstituting && substituteBuildingId) {
+    // Substitution mode
+    const building = masterData.buildings.find(b => b.id === substituteBuildingId);
+    assignment = {
+      inspectorName: selectedInspector,
+      buildings: building ? [building] : []
+    };
+  }
 
   // Fetch existing records when inspector is selected
   useEffect(() => {
-    if (!assignment) return;
+    if (!assignment || assignment.buildings.length === 0) return;
 
     async function loadExisting() {
       setLoadingExisting(true);
@@ -96,7 +109,7 @@ export default function ChecklistForm({ masterData }) {
 
     loadExisting();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [selectedInspector, todayStr]);
+  }, [selectedInspector, substituteBuildingId, todayStr]);
 
   const getRoomChecks = useCallback(
     (roomId) => {
@@ -121,6 +134,18 @@ export default function ChecklistForm({ masterData }) {
         },
       };
     });
+  };
+
+  const handleSelectOtherInspector = (name) => {
+    const confirmSub = window.confirm(`คุณ "${name}" ไม่ได้มีเวรวันนี้ ต้องการตรวจแทน (เปลี่ยนเวร) ใช่หรือไม่?`);
+    if (confirmSub) {
+      setSelectedInspector(name);
+      setIsSubstituting(true);
+    }
+  };
+
+  const handleSelectSubstituteBuilding = (buildingId) => {
+    setSubstituteBuildingId(buildingId);
   };
 
   const handleSubmitRoom = async (room, building) => {
@@ -238,6 +263,8 @@ export default function ChecklistForm({ masterData }) {
 
   const handleReset = () => {
     setSelectedInspector(null);
+    setIsSubstituting(false);
+    setSubstituteBuildingId(null);
     setCheckStates({});
     setSavedRooms({});
     setSubmitResult(null);
@@ -257,6 +284,45 @@ export default function ChecklistForm({ masterData }) {
           <div className="mt-4 bg-gray-50 rounded-xl p-3">
             <p className="text-xs text-gray-400">📅 {formatDateThai(todayStr)}</p>
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  // ===== STEP 1.5: SELECT BUILDING (For Substitution) =====
+  if (selectedInspector && isSubstituting && !substituteBuildingId) {
+    return (
+      <div className="max-w-lg mx-auto pb-24">
+        <div className="bg-white rounded-4xl shadow-sm border border-gray-100 p-8 text-center mb-6">
+          <div className="text-4xl mb-4">🏢</div>
+          <h2 className="text-xl font-bold text-gray-800 mb-2">เลือกอาคารที่จะตรวจ</h2>
+          <p className="text-sm text-gray-500 mb-6">คุณ "{selectedInspector}" กำลังมาตรวจแทนเวรวันนี้</p>
+          
+          <div className="grid grid-cols-1 gap-3">
+            {masterData.buildings.filter(b => b.is_active !== false).map(building => (
+              <button
+                key={building.id}
+                onClick={() => handleSelectSubstituteBuilding(building.id)}
+                className="flex items-center justify-between p-5 rounded-2xl border-2 border-gray-100 bg-white hover:border-blue-500 hover:bg-blue-50 transition-all duration-200 group"
+              >
+                <div className="flex items-center gap-3">
+                  <span className="text-2xl group-hover:scale-110 transition-transform">🏢</span>
+                  <div className="text-left">
+                    <div className="font-bold text-gray-800">{building.name}</div>
+                    <div className="text-xs text-gray-500">{building.rooms.length} ห้อง</div>
+                  </div>
+                </div>
+                <span className="text-blue-500 font-bold">เลือก →</span>
+              </button>
+            ))}
+          </div>
+          
+          <button
+            onClick={handleReset}
+            className="mt-8 text-sm text-gray-400 hover:text-red-500 underline"
+          >
+            ยกเลิกและย้อนกลับ
+          </button>
         </div>
       </div>
     );
@@ -333,11 +399,12 @@ export default function ChecklistForm({ masterData }) {
               </button>
             ))}
 
-            {/* Other Inspectors (Disabled / Grayscale) */}
+            {/* Other Inspectors (Now Clickable for substitution) */}
             {otherInspectors.map((inspector) => (
-              <div
+              <button
                 key={inspector.name}
-                className="flex flex-col items-center p-4 rounded-3xl border border-gray-100 bg-gray-50/30 grayscale opacity-[0.55] cursor-not-allowed transform scale-[0.98]"
+                onClick={() => handleSelectOtherInspector(inspector.name)}
+                className="flex flex-col items-center p-4 rounded-3xl border border-gray-100 bg-gray-50/30 grayscale hover:grayscale-0 hover:border-yellow-400 hover:bg-yellow-50/50 transition-all duration-300 active:scale-95"
               >
                 <div className="w-16 h-16 rounded-full mb-3 shadow-inner overflow-hidden border-2 border-white bg-gray-100 shrink-0">
                   {inspector.image_url ? (
@@ -354,8 +421,14 @@ export default function ChecklistForm({ masterData }) {
                     {inspector.default_building || 'ไม่ระบุอาคาร'}
                   </div>
                 </div>
-              </div>
+              </button>
             ))}
+          </div>
+
+          <div className="mt-6 p-4 bg-yellow-50 rounded-2xl border border-yellow-100">
+            <p className="text-[11px] text-yellow-700 leading-relaxed">
+              💡 <strong>การเปลี่ยนเวร:</strong> หากวันนี้คนที่มีเวรไม่สะดวก สามารถคลิกที่ชื่อท่านอื่น (สีเทา) เพื่อกดมา "ตรวจแทน" ได้เลยครับ
+            </p>
           </div>
 
           {/* Empty State when no inspectors exist */}

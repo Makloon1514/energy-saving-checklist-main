@@ -91,6 +91,21 @@ export default function Dashboard({ masterData }) {
     { id: 'sheet', label: 'ตาราง', icon: '📃' },
   ];
 
+  const requestNotificationPermission = async () => {
+    if (!('Notification' in window)) {
+      alert('เบราว์เซอร์นี้ไม่รองรับการแจ้งเตือนครับ');
+      return;
+    }
+    
+    const permission = await Notification.requestPermission();
+    if (permission === 'granted') {
+      new Notification('ตั้งค่าการแจ้งเตือนสำเร็จ!', {
+        body: 'คุณจะได้รับการแจ้งเตือนเมื่อถึงเวลาตรวจเวร (หากเปิดหน้าเว็บนี้ไว้)',
+        icon: '/pic/EN_Horizon_Color.png'
+      });
+    }
+  };
+
   const handleExportCSV = () => {
     if (filteredRecords.length === 0) return alert('ไม่มีข้อมูลให้ Export');
     const headers = ['วันที่', 'ผู้ตรวจ', 'อาคาร', 'ห้อง', ...CHECKLIST_ITEMS.map(i => i.label), 'สถานะ', 'คะแนน', 'ประหยัดไฟ (kWh)', 'ลด CO2 (kg)', 'เวลาบันทึก'];
@@ -132,6 +147,29 @@ export default function Dashboard({ masterData }) {
 
   return (
     <div className="max-w-4xl mx-auto pb-24">
+      {/* Duty Notification Banner */}
+      {viewDate === getTodayDateString() && INSPECTION_SCHEDULE.find(s => s.dayIndex === viewDayIndex) && (
+        <div className="mb-4 bg-linear-to-r from-indigo-600 to-blue-600 rounded-2xl p-4 shadow-md text-white flex items-center justify-between gap-4 overflow-hidden relative">
+          <div className="absolute top-0 right-0 p-4 opacity-10 text-6xl rotate-12">🔔</div>
+          <div className="relative z-10">
+            <h2 className="text-xs font-bold uppercase tracking-wider opacity-80 mb-1">📢 เวรตรวจวันนี้</h2>
+            <div className="flex flex-wrap gap-2">
+              {INSPECTION_SCHEDULE.find(s => s.dayIndex === viewDayIndex).inspectors.map((insp, i) => (
+                <span key={i} className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-sm font-bold border border-white/20">
+                  {insp.name} ({insp.buildingName})
+                </span>
+              ))}
+            </div>
+          </div>
+          <button 
+            onClick={requestNotificationPermission}
+            className="relative z-10 bg-white text-blue-600 px-4 py-2 rounded-xl text-xs font-bold shadow-lg hover:bg-blue-50 transition-colors shrink-0"
+          >
+            🔔 แจ้งเตือนฉัน
+          </button>
+        </div>
+      )}
+
       {/* Header */}
       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 mb-4 flex justify-between items-center flex-wrap gap-4">
         <div>
